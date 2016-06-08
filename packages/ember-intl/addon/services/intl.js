@@ -10,29 +10,40 @@ import getOwner from 'ember-getowner-polyfill';
 import IntlMessageFormat from 'intl-messageformat';
 import IntlRelativeFormat from 'intl-relativeformat';
 
-import extend from '../utils/extend';
+import isArrayEqual from '../utils/is-equal';
 
-const { assert, computed, makeArray, get, set, RSVP, Service, Evented, Logger:logger } = Ember;
+const { assert, computed, makeArray, get, set, RSVP, Service, Evented, deprecate } = Ember;
 const TRANSLATION_PATH_CAPTURE = /\/translations\/(.+)$/;
+const assign = Ember.assign || Ember.merge;
 
 function formatterProxy(formatType) {
-  return function (value, options = {}, formats = null) {
+  return function (value, options, formats) {
+    if (!options) {
+      if (arguments.length > 1) {
+        Ember.warn(`[ember-intl] expected object for formatter ${formatType} but received ${typeof options}`, false, {
+          id: 'ember-intl-missing-formatter-args'
+        });
+      }
+
+      options = {};
+    }
+
     const owner = getOwner(this);
     const formatter = owner.lookup(`ember-intl@formatter:format-${formatType}`);
 
     if (typeof options.format === 'string') {
-      options = extend(this.getFormat(formatType, options.format), options);
+      options = assign(this.getFormat(formatType, options.format), options);
     }
 
-    if (!options.locale) {
-      options.locale = get(this, '_locale');
-    }
 
     if (!formats) {
       formats = get(this, 'formats');
     }
 
-    return formatter.format(value, options, formats);
+    return formatter.format(value, options, {
+      formats: formats,
+      locale: options.locale || get(this, '_locale')
+    });
   };
 }
 
@@ -73,10 +84,11 @@ const IntlService = Service.extend(Evented, {
   formatTime: formatterProxy('time'),
   formatDate: formatterProxy('date'),
 
-  t(key, options, formats) {
+  t(key, ...args) {
+    const [ options ] = args;
     const translation = this.findTranslationByKey(key, options && options.locale);
 
-    return this.formatMessage(translation, options, formats);
+    return this.formatMessage(translation, ...args);
   },
 
   exists(key, optionalLocales) {
@@ -87,7 +99,7 @@ const IntlService = Service.extend(Evented, {
       locales = get(this, '_locale');
     }
 
-    assert(`ember-intl: locale is unset, cannot lookup '${key}'`, locales);
+    assert(`[ember-intl] locale is unset, cannot lookup '${key}'`, locales);
 
     return makeArray(locales).some((locale) => {
       return adapter.has(locale, key);
@@ -133,14 +145,25 @@ const IntlService = Service.extend(Evented, {
   },
 
   createLocale(locale, payload) {
-    logger.warn('`createLocale` is deprecated, use `addTranslations`');
+    deprecate('[ember-intl] `createLocale` is deprecated, use `addTranslations`', false, {
+      id: 'ember-intl-create-locale'
+    });
 
     return this.addTranslations(locale, payload);
   },
 
   setLocale(locales) {
-    set(this, '_locale', makeArray(locales));
-    this.trigger('localeChanged');
+    if (!locales) { return; }
+
+    const proposed = makeArray(locales);
+    const current = get(this, '_locale');
+
+    if (!isArrayEqual(proposed, current)) {
+      this.propertyWillChange('locale');
+      set(this, '_locale', proposed);
+      this.propertyDidChange('locale');
+      this.trigger('localeChanged');
+    }
   },
 
   getFormat(formatType, format) {

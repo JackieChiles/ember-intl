@@ -26,12 +26,13 @@ var TranslationReducer = require('./lib/broccoli/translation-reducer');
 module.exports = {
   name: 'ember-intl',
   opts: null,
+  isLocalizationFramework: true,
 
   included: function(app) {
     this._super.included.apply(this, arguments);
 
     // see: https://github.com/ember-cli/ember-cli/issues/3718
-    if (typeof app.import !== 'function' && app.app) {
+    while (typeof app.import !== 'function' && app.app) {
       app = app.app;
     }
 
@@ -54,7 +55,33 @@ module.exports = {
 
     this.trees.translationTree = this.createTranslationTree();
 
-    return this.app;
+    return app;
+  },
+
+  outputPaths: function() {
+    var assetPath = 'assets/intl';
+    var appOptions = this.app.options;
+
+    if (appOptions.app && appOptions.app.intl) {
+      assetPath = appOptions.app.intl;
+    }
+
+    return assetPath;
+  },
+
+  contentFor: function(name) {
+    if (name === 'head' && !this.opts.disablePolyfill && this.opts.autoPolyfill) {
+      var assetPath = this.outputPaths();
+      var locales = this.findLocales();
+
+      var localeScripts = locales.map(function(locale) {
+        return '<script src=\"' + assetPath + '/locales/' + locale + '.js\"></script>';
+      });
+
+      return ['<script src=\"' + assetPath + '/intl.min.js\"></script>']
+        .concat(localeScripts)
+        .join('\n');
+    }
   },
 
   treeForApp: function(tree) {
@@ -117,10 +144,14 @@ module.exports = {
 
   readConfig: function(environment) {
     var project = this.app.project;
-    var configPath = path.join(project.root, project.configPath(), '..', 'ember-intl.js');
 
-    if (fs.existsSync(configPath)) {
-      return require(configPath)(environment);
+    // NOTE: needed for >= ember-cli 2.6.0-beta.3
+    // since the configPath now returns prefixed with `project.root`
+    var configPath = path.join(project.configPath().replace(new RegExp('^' + project.root), ''), '..');
+    var config = path.join(project.root, configPath, 'ember-intl.js');
+
+    if (fs.existsSync(config)) {
+      return require(config)(environment);
     }
 
     return {};
@@ -140,6 +171,7 @@ module.exports = {
       baseLocale: null,
       publicOnly: false,
       disablePolyfill: false,
+      autoPolyfill: false,
       inputPath: 'translations',
       outputPath: 'translations'
     };
@@ -191,21 +223,31 @@ module.exports = {
     });
   },
 
-  findIntlAddons: function(tree) {
-    var addons = this.app.project.addonPackages;
+  findIntlAddons: function() {
+    var addons = this.app.project.addons;
+    var hash = {};
+    var find = function (list, addon) {
+      // Only handle each addon once
+      if (hash[addon.name]) {
+        return list;
+      }
 
-    return Object.keys(addons).map(function(key) {
-      var addon = addons[key];
-      var pkg = require(path.join(addon.path, 'package.json'));
+      var translationPath = addon.pkg['ember-addon'].translationPath || 'translations';
 
-      return {
-        name: key,
-        translationPath: pkg['ember-addon'].translationPath || 'translations',
-        path: addon.path
-      };
-    }).filter(function(addon) {
-      return fs.existsSync(path.join(addon.path, addon.translationPath));
-    });
+      if (fs.existsSync(path.join(addon.root, translationPath))) {
+        list.push({
+          name: addon.name,
+          translationPath: translationPath,
+          path: addon.root
+        });
+        hash[addon.name] = true;
+      }
+
+      // Recursively load all child addons
+      return addon.addons.reduce(find, list);
+    };
+
+    return addons.reduce(find, []);
   },
 
   createTranslationTree: function() {

@@ -1,14 +1,18 @@
 import Ember from 'ember';
 import links from 'ember-intl/utils/links';
 
-const { Logger:logger } = Ember;
+const { warn } = Ember;
 
 export default function missingMessage(key, locales) {
   if (!locales) {
-    logger.warn(`ember-intl: no locale has been set. Documentation: ${links.unsetLocale}`)
+    warn(`[ember-intl] no locale has been set. Documentation: ${links.unsetLocale}`, false, {
+      id: 'ember-intl-no-locale-set'
+    })
   }
   else {
-    logger.warn(`ember-intl: translation: '${key}' on locale: '${locales.join(', ')}' was not found.`);
+    warn(`[ember-intl] translation: '${key}' on locale: '${locales.join(', ')}' was not found.`, false, {
+      id: 'ember-intl-missing-translation'
+    });
   }
 
   return `Missing translation: ${key}`;

@@ -29,6 +29,16 @@ module.exports = function(environment) {
     baseLocale: 'en-us',
 
     /**
+    * autoPolyfill, when true will automatically inject the IntlJS polyfill
+    * into index.html
+    *
+    * @property autoPolyfill
+    * @type {Boolean}
+    * @default "false"
+    */
+    autoPolyfill: true,
+
+    /**
     * disablePolyfill prevents the polyfill from being bundled in the asset folder of the build
     *
     * @property disablePolyfill
@@ -42,7 +52,7 @@ module.exports = function(environment) {
     * This enables asynchronously loading the translations for the active locale
     * by fetching them from the asset folder of the build.
     *
-    * See: https://github.com/yahoo/ember-intl/wiki/Asynchronously-loading-translations
+    * See: https://github.com/jasonmit/ember-intl/wiki/Asynchronously-loading-translations
     *
     * @property publicOnly
     * @type {Boolean}
